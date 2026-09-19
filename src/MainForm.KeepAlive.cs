@@ -66,7 +66,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        LidPower.KeepAwake(true);
+        LidPower.KeepAwake(true, Settings.KeepDisplayOn);
         _active = true;
         _lastError = "";
         _keepStart = DateTime.Now;
@@ -94,7 +94,7 @@ internal sealed partial class MainForm
         }
 
         AppState.Clear();
-        LidPower.KeepAwake(false);
+        LidPower.KeepAwake(false); // 关闭时传 false，清除全部请求
         _active = false;
         _deadline = DateTime.MinValue;
         _deadlineTotalSec = 0;
@@ -125,6 +125,10 @@ internal sealed partial class MainForm
 
         _pills.EnabledLook = !_active;
         _pills.Invalidate();
+
+        // 保活期间不允许改这个开关，避免和已经生效的请求状态不一致
+        _chkDisplay.Enabled = !_active;
+        _chkDisplay.Invalidate();
     }
 
     /// <summary>重新读取合盖动作与是否在使用电池。</summary>

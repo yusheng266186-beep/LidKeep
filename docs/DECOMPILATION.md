@@ -49,6 +49,14 @@ ilspycmd --project --outputdir .\out LidKeep.exe
 | `LidKeep.DarkMenuColors` | `DarkMenuColors.cs` | 菜单配色 |
 | — | `Properties/AssemblyInfo.cs` | 程序集信息 |
 
+以下两个类型是**本仓库新增**的（原版没有），用于修复息屏 / 锁屏问题，
+详见下文「与原版不一致的地方」：
+
+| 类型 | 文件 | 说明 |
+| --- | --- | --- |
+| `LidKeep.Settings` | `Settings.cs` | 持久化「保持屏幕常亮」开关 |
+| `LidKeep.CheckBoxFlat` | `CheckBoxFlat.cs` | 自绘勾选框 |
+
 程序集内**不含**任何嵌入资源（`GetManifestResourceNames()` 返回空），
 界面全部由代码自绘，因此没有 `.resx` / Designer 文件需要还原。
 唯一的外部资源是 `app.ico`（图标，372,526 字节），已原样提取。
@@ -79,12 +87,50 @@ ilspycmd --project --outputdir .\out LidKeep.exe
 - `StopKeep` 只在当前动作仍为 `0/0` 时才执行还原，避免覆盖用户的手动修改。
 - 托盘图标文案截断到 62 字符（`NotifyIcon.Text` 的 63 字符上限）。
 
+### ⚠️ 与原版**不一致**的地方：修复了息屏 / 锁屏缺陷
+
+这是本仓库**唯一一处有意改变行为**的改动，单独列出以免误解为原版行为。
+
+原版 `LidPower.KeepAwake` 只申请了一个标志：
+
+```csharp
+private const uint EsSystemRequired = 0x00000001; // 原注释写“连屏幕一起保持点亮”
+SetThreadExecutionState(on ? 0x80000000 | EsSystemRequired : 0x80000000);
+```
+
+问题有两层：
+
+1. **注释是错的**。`ES_SYSTEM_REQUIRED` 只阻止*系统*进入睡眠，**不阻止显示器关闭**。
+   阻止显示器关闭需要 `ES_DISPLAY_REQUIRED`（`0x00000002`）。
+2. **因此有个真实缺陷**：保活期间合盖，显示器照常熄灭，Windows 随即进入锁屏界面。
+   任务本身不会中断（这点已用系统日志确认：保活期间没有任何 Kernel-Power 睡眠事件），
+   但界面被锁 —— 与「保活」这个功能名给人的预期不符。
+
+本仓库的修法：
+
+- `LidPower.KeepAwake(bool on, bool keepDisplayOn = false)`，
+  在 `keepDisplayOn` 为真时补上 `ES_DISPLAY_REQUIRED`。
+- 新增 `Settings.cs` 持久化该开关，界面上对应
+  「保活时保持屏幕常亮（防止合盖锁屏）」勾选框，默认**开启**。
+- 命令行加 `--display` / `--no-display` 临时覆盖。
+
+> 需要说明的是，`SetThreadExecutionState` 只能压制**空闲**触发的睡眠与息屏；
+> 合盖、电源键这类硬件事件由固件 / 驱动上报，应用层无法拦截
+> （见 [系统睡眠条件](https://learn.microsoft.com/zh-cn/windows/win32/power/system-sleep-criteria)）。
+> 本程序回避睡眠本来就靠改合盖动作，`SetThreadExecutionState` 只是兜底。
+> 因此「保持屏幕常亮能否在所有机型上 100% 阻止合盖锁屏」取决于驱动行为，未能穷举验证。
+
 ## 验证方式
 
 1. **反编译完整性**：`--project` 模式输出全部 10 个类型，无报错、无 `throw new NotSupportedException` 占位。
 2. **行为对照**：用原 `LidKeep.exe` 执行 `--version` / `--status` / `--restore`，
    记录输出格式（含中文文案）与状态文件变化，作为整理时的对照基准。
 3. **编译验证**：整理后的源码用 MSBuild / `dotnet build` 编译通过，无警告级错误。
+4. **保活有效性实测**：本机开启保活后合盖，查系统日志确认无 Kernel-Power
+   Event ID 42（进入睡眠），即任务未被中断。
+5. **标志位验证**：对编译产物用 ilspycmd 反查 `LidPower`，确认
+   `EsContinuous = 2147483648u`、`EsSystemRequired = 1u`、`EsDisplayRequired = 2u`
+   三个常量均存在于 IL 中。
 
 ## 免责声明
 

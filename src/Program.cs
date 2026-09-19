@@ -29,6 +29,9 @@ internal static class Program
         string mode = "gui";
         int keepSeconds = -1;
         bool forceGui = false;
+        bool? displayOverride = null;
+
+        Settings.Load();
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -50,6 +53,13 @@ internal static class Program
                 case "--gui":
                     forceGui = true;
                     break;
+                // 命令行临时覆盖「保持屏幕常亮」，不写回配置文件
+                case "--display":
+                    displayOverride = true;
+                    break;
+                case "--no-display":
+                    displayOverride = false;
+                    break;
                 case "--help":
                 case "-h":
                 case "/?":
@@ -60,6 +70,9 @@ internal static class Program
                     break;
             }
         }
+
+        if (displayOverride.HasValue)
+            Settings.KeepDisplayOn = displayOverride.Value;
 
         // 显式给了时长又没要求 GUI，就走无界面模式，方便脚本调用
         if (mode == "gui" && keepSeconds >= 0 && !forceGui)
@@ -150,8 +163,9 @@ internal static class Program
             return 1;
         }
 
-        LidPower.KeepAwake(true);
+        LidPower.KeepAwake(true, Settings.KeepDisplayOn);
         Console.WriteLine("保活已开启 (" + (seconds > 0 ? seconds + " 秒后自动恢复" : "按 Ctrl+C 停止") +
+                          (Settings.KeepDisplayOn ? "，保持屏幕常亮" : "，屏幕仍会熄灭") +
                           ")。原设置: AC=" + origAc + ", DC=" + origDc);
 
         bool stop = false;
@@ -214,5 +228,9 @@ internal static class Program
         Console.WriteLine("  LidKeep.exe --status               查看当前合盖动作设置");
         Console.WriteLine("  LidKeep.exe --restore              恢复保活前的合盖动作");
         Console.WriteLine("  LidKeep.exe --version / --help");
+        Console.WriteLine("");
+        Console.WriteLine("屏幕选项（仅本次运行生效，不写回配置）:");
+        Console.WriteLine("  --display                          保活时保持屏幕常亮（默认，不会锁屏）");
+        Console.WriteLine("  --no-display                       只保系统不睡眠，允许屏幕熄灭并锁屏");
     }
 }

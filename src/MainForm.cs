@@ -13,7 +13,7 @@ namespace LidKeep;
 internal sealed partial class MainForm : Form
 {
     private const int DesignW = 400;
-    private const int DesignH = 376;
+    private const int DesignH = 400;
 
     /// <summary>可选时长（秒）。0 表示不限时。</summary>
     private static readonly int[] Durations = { 0, 1800, 3600, 7200, 14400 };
@@ -27,6 +27,7 @@ internal sealed partial class MainForm : Form
     private FlatBtn _btnPrimary;
     private PillBar _pills;
     private CaptionBtn _btnMin, _btnClose;
+    private CheckBoxFlat _chkDisplay;
 
     private NotifyIcon _tray;
     private ContextMenuStrip _trayMenu;
@@ -127,8 +128,26 @@ internal sealed partial class MainForm : Form
         _btnClose = new CaptionBtn { IsClose = true };
         _btnClose.Click += delegate { HideToTray(); };
 
+        // 勾选项：保活期间是否连屏幕一起保持点亮（屏幕不灭才不会触发锁屏）
+        _chkDisplay = new CheckBoxFlat
+        {
+            Font = _fSmall,
+            Text = "保活时保持屏幕常亮（防止合盖锁屏）",
+            Checked = Settings.KeepDisplayOn,
+        };
+        _chkDisplay.CheckedChanged += delegate
+        {
+            Settings.KeepDisplayOn = _chkDisplay.Checked;
+            Settings.Save();
+            // 保活进行中时立刻生效，不用重开
+            if (_active)
+                LidPower.KeepAwake(true, Settings.KeepDisplayOn);
+            Invalidate();
+        };
+
         Controls.Add(_btnPrimary);
         Controls.Add(_pills);
+        Controls.Add(_chkDisplay);
         Controls.Add(_btnMin);
         Controls.Add(_btnClose);
 
@@ -156,6 +175,7 @@ internal sealed partial class MainForm : Form
         _btnClose.Bounds = new Rectangle(Width - S(40f), S(12f), S(28f), S(28f));
         _pills.Bounds = new Rectangle(pad, S(206f), Width - 2 * pad, S(32f));
         _btnPrimary.Bounds = new Rectangle(pad, S(250f), Width - 2 * pad, S(44f));
+        _chkDisplay.Bounds = new Rectangle(pad + S(2f), S(304f), Width - 2 * pad - S(4f), S(20f));
 
         // 用圆角区域裁掉窗口四角
         using GraphicsPath path = Ui.RoundRect(new RectangleF(0f, 0f, Width, Height), S(12f));

@@ -116,10 +116,10 @@ internal sealed partial class MainForm
             TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
         using (var pen = new Pen(Ui.Divider, 1f))
-            g.DrawLine(pen, S(20f), S(304f) + 0.5f, Width - S(20f), S(304f) + 0.5f);
+            g.DrawLine(pen, S(20f), S(336f) + 0.5f, Width - S(20f), S(336f) + 0.5f);
 
-        int y = S(312f);
-        TextRenderer.DrawText(g, "合盖后屏幕熄灭属正常，机器仍会继续运行。", _fSmall,
+        int y = S(344f);
+        TextRenderer.DrawText(g, ScreenHint(), _fSmall,
             new Rectangle(S(20f), y, Width - S(40f), S(18f)), Ui.TextMuted,
             TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         y += S(18f);
@@ -135,6 +135,14 @@ internal sealed partial class MainForm
         TextRenderer.DrawText(g, "停止保活或退出程序时，会自动恢复原合盖设置。", _fSmall,
             new Rectangle(S(20f), y, Width - S(40f), S(18f)), Ui.TextMuted,
             TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+    }
+
+    /// <summary>屏幕状态说明 —— 是否勾选「保持屏幕常亮」会给出不同的预期。</summary>
+    private string ScreenHint()
+    {
+        return Settings.KeepDisplayOn
+            ? "保活期间屏幕保持常亮，不会锁屏；合盖后请留意散热。"
+            : "合盖后屏幕会熄灭并进入锁屏，但任务不会中断。";
     }
 
     /// <summary>卡片里的第二行文案，按状态切换。</summary>

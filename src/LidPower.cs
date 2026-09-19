@@ -22,8 +22,9 @@ internal static class LidPower
     /// <summary>电源设置 GUID：合盖时采取的操作。</summary>
     public const string LidActionGuid = "5ca83367-6e45-459f-a27b-476b1d01c936";
 
-    private const uint EsContinuous = 0x80000000;  // 让系统保持唤醒
-    private const uint EsSystemRequired = 0x00000001; // 连屏幕一起保持点亮
+    private const uint EsContinuous = 0x80000000;      // 让下面的请求持续有效，直到显式清除
+    private const uint EsSystemRequired = 0x00000001;  // 阻止系统进入睡眠（任务不会中断）
+    private const uint EsDisplayRequired = 0x00000002; // 阻止显示器关闭（屏幕保持点亮）
 
     private static int _lastExitCode;
     private static string _lastOutput = "";
@@ -133,9 +134,31 @@ internal static class LidPower
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint SetThreadExecutionState(uint esFlags);
 
-    /// <summary>开启 / 关闭系统级保持唤醒。</summary>
-    public static void KeepAwake(bool on)
+    /// <summary>
+    /// 开启 / 关闭系统级保持唤醒。
+    ///
+    /// <paramref name="keepDisplayOn"/> 决定是否连屏幕一起保持点亮：
+    ///
+    /// - <c>false</c>（只带 ES_SYSTEM_REQUIRED）：系统不睡，跑着的任务不会中断，
+    ///   但显示器仍会按电源计划关闭。合盖后屏幕熄灭 → Windows 进入锁屏界面。
+    ///   这也是原程序的行为。
+    /// - <c>true</c>（加上 ES_DISPLAY_REQUIRED）：显示器也不关，因此不会因为
+    ///   “显示器关闭”而触发锁屏。代价是更耗电、屏幕一直亮着。
+    ///
+    /// 注意：这两个标志只能压制**空闲**触发的睡眠与息屏。合盖、按电源键这类
+    /// 硬件事件由固件 / 驱动上报，应用层无法拦截；所以本程序的做法是把合盖动作
+    /// 改成「不采取任何操作」（见 <see cref="WriteLidAction"/>）来回避睡眠，
+    /// 再用这里的请求兜底。
+    /// </summary>
+    public static void KeepAwake(bool on, bool keepDisplayOn = false)
     {
-        SetThreadExecutionState(on ? EsContinuous | EsSystemRequired : EsContinuous);
+        uint flags = EsContinuous;
+        if (on)
+        {
+            flags |= EsSystemRequired;
+            if (keepDisplayOn)
+                flags |= EsDisplayRequired;
+        }
+        SetThreadExecutionState(flags);
     }
 }
