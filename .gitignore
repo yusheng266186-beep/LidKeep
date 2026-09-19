@@ -1,0 +1,17 @@
+# 编译产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# 运行时生成
+*.log
+quota-cache.json
+config.json
+lidkeep-state.txt
+
+# 系统
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+  <PropertyGroup>
+    <AssemblyName>LidKeep</AssemblyName>
+    <RootNamespace>LidKeep</RootNamespace>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- 原程序集基于 .NET Framework 4.0 构建。
+         这里默认目标 net48（Win10/11 自带），如需原汁原味的 4.0 可改成 net40
+         并用 classic MSBuild + .NET 4.0 Targeting Pack 构建。 -->
+    <TargetFramework>net48</TargetFramework>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.Win32" />
+  </ItemGroup>
+
+</Project>
