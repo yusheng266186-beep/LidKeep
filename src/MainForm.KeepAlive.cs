@@ -43,22 +43,47 @@ internal sealed partial class MainForm
             return;
         }
 
-        // 已经是 0/0 说明上一次保活没正常收尾，状态文件里才是真正的原值
-        if (ac == 0 && dc == 0 && AppState.Load(out int savedAc, out int savedDc))
+        // 原值的确定顺序（先信任已保存的，再信任现场读到的）：
+        //   1) 受保护备份里已有有效原值 —— 直接沿用，绝不覆盖；
+        //   2) 会话状态里有有效原值 —— 提升为备份；
+        //   3) 现场读到的不是 0/0 —— 那就是真正的原始设置，记入备份；
+        //   4) 都不成立（说明上一轮被强杀且原值已丢失）—— 回落到「睡眠」，
+        //      并且不写备份，避免把无效值固化下来。
+        bool haveOrig = AppState.LoadValidBackup(out int origAc, out int origDc);
+
+        if (!haveOrig && AppState.Load(out int sessionAc, out int sessionDc)
+                      && sessionAc >= 1 && sessionAc <= 3
+                      && sessionDc >= 1 && sessionDc <= 3)
         {
-            _origAc = savedAc;
-            _origDc = savedDc;
+            origAc = sessionAc;
+            origDc = sessionDc;
+            haveOrig = true;
+        }
+
+        if (!haveOrig && ac >= 1 && dc >= 1)
+        {
+            origAc = ac;
+            origDc = dc;
+            haveOrig = true;
+        }
+
+        if (haveOrig)
+        {
+            AppState.SaveBackup(origAc, origDc);
         }
         else
         {
-            _origAc = ac;
-            _origDc = dc;
+            origAc = 1;
+            origDc = 1;
         }
+
+        _origAc = origAc;
+        _origDc = origDc;
         AppState.Save(_origAc, _origDc);
 
         if (!LidPower.WriteLidAction(0, 0, out err))
         {
-            AppState.Clear();
+            AppState.ClearAll();
             _lastError = "修改合盖设置失败";
             Invalidate();
             MessageBox.Show(this, "修改合盖设置失败：\r\n" + err, "合盖保活",
@@ -87,13 +112,12 @@ internal sealed partial class MainForm
         // 只有当前仍是「不采取任何操作」时才还原，避免覆盖用户手动改过的设置
         if (LidPower.ReadLidAction(out int ac, out int dc, out string err) && ac == 0 && dc == 0)
         {
-            if (AppState.Load(out int savedAc, out int savedDc))
-                LidPower.WriteLidAction(savedAc, savedDc, out err);
-            else
-                LidPower.WriteLidAction(_origAc, _origDc, out err);
+            if (RestoreValues(out int targetAc, out int targetDc))
+                LidPower.WriteLidAction(targetAc, targetDc, out err);
         }
 
-        AppState.Clear();
+        // 正常收尾：会话状态和原值备份一起清掉
+        AppState.ClearAll();
         LidPower.KeepAwake(false); // 关闭时传 false，清除全部请求
         _active = false;
         _deadline = DateTime.MinValue;
@@ -112,6 +136,31 @@ internal sealed partial class MainForm
         catch
         {
         }
+    }
+
+    /// <summary>
+    /// 决定该把合盖动作还原成什么值。优先级：
+    /// 受保护备份 → 会话状态 → 进程内记住的原值。
+    /// 三者都拿不到时回落到「睡眠」，保证不会把 0/0 写回去。
+    /// </summary>
+    private bool RestoreValues(out int ac, out int dc)
+    {
+        if (AppState.LoadValidBackup(out ac, out dc))
+            return true;
+
+        if (AppState.Load(out ac, out dc) && ac >= 1 && ac <= 3 && dc >= 1 && dc <= 3)
+            return true;
+
+        if (_origAc >= 1 && _origAc <= 3 && _origDc >= 1 && _origDc <= 3)
+        {
+            ac = _origAc;
+            dc = _origDc;
+            return true;
+        }
+
+        ac = 1;
+        dc = 1;
+        return true;
     }
 
     /// <summary>刷新主按钮文案与配色，以及选择器的可用状态。</summary>

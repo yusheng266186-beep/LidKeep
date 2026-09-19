@@ -74,6 +74,10 @@ internal static class Program
         if (displayOverride.HasValue)
             Settings.KeepDisplayOn = displayOverride.Value;
 
+        // 启动自检：清掉「显示正在保活但原值已丢失」的误导性记录
+        if (AppState.Repair())
+            Console.WriteLine("提示: 检测到上一轮保活异常中断且原值已丢失，已清理残留状态。");
+
         // 显式给了时长又没要求 GUI，就走无界面模式，方便脚本调用
         if (mode == "gui" && keepSeconds >= 0 && !forceGui)
             mode = "headless";
@@ -108,12 +112,20 @@ internal static class Program
         {
             Console.WriteLine("KeepActive: no");
         }
+
+        // 受保护备份才是还原时的权威来源
+        if (AppState.LoadValidBackup(out int bakAc, out int bakDc))
+            Console.WriteLine($"ProtectedOriginal: AC={bakAc}, DC={bakDc}  ({AppState.BackupPath})");
+
         return 0;
     }
 
     private static int RunRestore()
     {
-        if (!AppState.Load(out int ac, out int dc))
+        // 优先用受保护备份；没有备份时退回会话状态
+        int ac, dc;
+        bool haveBackup = AppState.LoadValidBackup(out ac, out dc);
+        if (!haveBackup && !AppState.Load(out ac, out dc))
         {
             Console.WriteLine("没有找到保活记录，无需恢复。");
             return 0;
@@ -123,7 +135,7 @@ internal static class Program
         if (LidPower.ReadLidAction(out int curAc, out int curDc, out _) && (curAc != 0 || curDc != 0))
         {
             Console.WriteLine($"合盖设置已被手动改过 (AC={curAc}, DC={curDc})，保持不变。");
-            AppState.Clear();
+            AppState.ClearAll();
             return 0;
         }
 
@@ -133,8 +145,9 @@ internal static class Program
             return 1;
         }
 
-        AppState.Clear();
-        Console.WriteLine($"已恢复合盖动作: AC={ac} ({LidPower.ActionName(ac)}), DC={dc} ({LidPower.ActionName(dc)})");
+        AppState.ClearAll();
+        Console.WriteLine($"已恢复合盖动作: AC={ac} ({LidPower.ActionName(ac)}), DC={dc} ({LidPower.ActionName(dc)})" +
+                          (haveBackup ? "（来自原值备份）" : ""));
         return 0;
     }
 
@@ -146,16 +159,39 @@ internal static class Program
             return 1;
         }
 
-        // 记录“原始设置”：
-        //   - 当前不是 0/0 —— 说明还没保活，现在读到的就是原始值，存下来；
-        //   - 当前已是 0/0 —— 说明之前就有保活在跑，沿用更早记录的原始值。
+        // 原值的确定顺序，与 GUI 版一致：
+        //   1) 受保护备份 —— 绝不覆盖；
+        //   2) 会话状态里的有效原值 —— 提升为备份；
+        //   3) 现场读到的非 0/0 值 —— 真正的原始设置；
+        //   4) 都不成立 —— 回落「睡眠」，不写备份。
         int origAc, origDc;
-        if (ac != 0 || dc != 0 || !AppState.Load(out origAc, out origDc))
+        bool haveOrig = AppState.LoadValidBackup(out origAc, out origDc);
+
+        if (!haveOrig && AppState.Load(out int sessionAc, out int sessionDc)
+                      && sessionAc >= 1 && sessionAc <= 3
+                      && sessionDc >= 1 && sessionDc <= 3)
+        {
+            origAc = sessionAc;
+            origDc = sessionDc;
+            haveOrig = true;
+        }
+
+        if (!haveOrig && ac >= 1 && dc >= 1)
         {
             origAc = ac;
             origDc = dc;
-            AppState.Save(origAc, origDc);
+            haveOrig = true;
         }
+
+        if (haveOrig)
+            AppState.SaveBackup(origAc, origDc);
+        else
+        {
+            origAc = 1;
+            origDc = 1;
+        }
+
+        AppState.Save(origAc, origDc);
 
         if (!LidPower.WriteLidAction(0, 0, out err))
         {
@@ -188,7 +224,7 @@ internal static class Program
 
         LidPower.KeepAwake(false);
         LidPower.WriteLidAction(origAc, origDc, out err);
-        AppState.Clear();
+        AppState.ClearAll();
         Console.WriteLine($"已恢复合盖动作: AC={origAc} ({LidPower.ActionName(origAc)}), DC={origDc} ({LidPower.ActionName(origDc)})");
         return 0;
     }
