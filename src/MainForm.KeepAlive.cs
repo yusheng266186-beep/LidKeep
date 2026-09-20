@@ -13,9 +13,14 @@ internal sealed partial class MainForm
         if (_active && _deadline != DateTime.MinValue && DateTime.Now >= _deadline)
             StopKeep(notify: true);
 
-        // 每 5 秒刷新一次「当前合盖动作」和电源状态
+        // 每 5 秒重申一次保持唤醒请求，并刷新「当前合盖动作」和电源状态。
+        // 重申是为了防止系统在会话切换 / 驱动重置后丢掉 ES_CONTINUOUS 请求，
+        // 这样「程序启用期间一直不休眠、不息屏」才是可靠的。
         if (_tick % 10 == 0)
+        {
+            LidPower.ReassertExecutionState();
             RefreshActionText();
+        }
 
         if (_active || _tick % 10 == 0)
             Invalidate();

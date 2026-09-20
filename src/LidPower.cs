@@ -29,6 +29,12 @@ internal static class LidPower
     private static int _lastExitCode;
     private static string _lastOutput = "";
 
+    /// <summary>当前是否处于保活状态（供周期性重申使用）。</summary>
+    private static bool _keepAwakeActive;
+
+    /// <summary>保活期间是否连屏幕一起保持点亮。</summary>
+    private static bool _keepDisplayOn;
+
     private static string RunPowerCfg(string args)
     {
         var psi = new ProcessStartInfo("powercfg.exe", args)
@@ -152,11 +158,33 @@ internal static class LidPower
     /// </summary>
     public static void KeepAwake(bool on, bool keepDisplayOn = false)
     {
+        _keepDisplayOn = keepDisplayOn;
+        _keepAwakeActive = on;
+        ApplyExecutionState();
+    }
+
+    /// <summary>
+    /// 重申一次保持唤醒的请求。
+    ///
+    /// <c>SetThreadExecutionState</c> 的请求虽然带 <c>ES_CONTINUOUS</c>，但在会话切换、
+    /// 快速用户切换、某些驱动重置之后仍可能被系统丢掉。程序运行期间每 5 秒重申一次，
+    /// 才能保证「启用期间一直不休眠、不息屏」这个语义是可靠的。
+    /// </summary>
+    public static void ReassertExecutionState()
+    {
+        if (!_keepAwakeActive)
+            return;
+
+        ApplyExecutionState();
+    }
+
+    private static void ApplyExecutionState()
+    {
         uint flags = EsContinuous;
-        if (on)
+        if (_keepAwakeActive)
         {
             flags |= EsSystemRequired;
-            if (keepDisplayOn)
+            if (_keepDisplayOn)
                 flags |= EsDisplayRequired;
         }
         SetThreadExecutionState(flags);

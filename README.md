@@ -112,9 +112,29 @@ powercfg -setactive SCHEME_CURRENT
 在此基础上再调用 `SetThreadExecutionState`，让系统在这段时间内保持唤醒：
 
 ```
-ES_CONTINUOUS | ES_SYSTEM_REQUIRED                    只保系统不睡眠
-ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED   连屏幕一起保持点亮
+ES_CONTINUOUS | ES_SYSTEM_REQUIRED                          只保系统不睡眠
+ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED    连屏幕一起保持点亮
 ```
+
+请求**每 5 秒重申一次**（见 `LidPower.ReassertExecutionState`）。虽然带了 `ES_CONTINUOUS`，
+但会话切换、快速用户切换、驱动重置之后系统仍可能丢掉这个请求，周期性重申才能保证
+「程序启用期间一直不休眠、不息屏」是可靠的。
+
+### 会不会休眠 / 锁屏：逐条对照
+
+| 触发路径 | 靠什么挡住 |
+| --- | --- |
+| 合盖 | 合盖动作被改成「不采取任何操作」 |
+| 空闲超时 | 睡眠超时本就是「从不」；另有 `ES_SYSTEM_REQUIRED` 兜底 |
+| 息屏 | 关闭显示器超时本就是「从不」；另有 `ES_DISPLAY_REQUIRED` 兜底 |
+| 无人参与睡眠超时（默认 120 秒） | `ES_SYSTEM_REQUIRED` 会覆盖它 |
+| 屏保 / 屏保恢复要密码 | 不启用屏保就不会走这条路 |
+| 息屏触发的锁屏 | 屏幕不灭，就不会触发 |
+| **电源按钮 / 睡眠按钮** | ❌ **不接管**，按了仍会休眠（特意的，保留手动强制休眠的能力） |
+| 合盖动作被改成 0/0 之外的其它值 | ❌ 用户手动改电源选项的话，`StopKeep` 会尊重你的修改而不还原 |
+
+> 本程序**不能**拦截合盖、电源键这类硬件事件本身，它改变的是这些事件的**处理结果**。
+> 若某机型在固件层直接触发锁屏（与息屏无关），应用层无法阻止，只能调整系统锁屏策略。
 
 ## 原值保护机制
 
